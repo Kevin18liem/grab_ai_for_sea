@@ -3,3 +3,6 @@ car_dataset/
 __pycache__/
 devkit/
 dump_dataset/
+imagenetInception/
+tmp/
+model_inception/

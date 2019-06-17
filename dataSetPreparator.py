@@ -6,6 +6,9 @@ from random import shuffle
 import imageUtil
 import pickle
 import numpy as np
+import DatasetManager
+    
+np.random.seed(numpySeed)
 
 class dataSetPreparator:
 
@@ -114,3 +117,87 @@ class dataSetPreparator:
         self.trainingDataY = self.__convertLabelsToOneHotVector(self.trainingDataY)
         print ("Creating one hot encoded vectors for testing labels..."+self.__getCurrentTime())
         self.testingDataY = self.__convertLabelsToOneHotVector(self.testingDataY)
+
+    def loadData(self, fileName):
+        pklFile = open(fileName, 'rb')
+        preparedData=pickle.load(pklFile)
+        self.trainingDataX = preparedData["trainingX"]
+        self.trainingDataY = preparedData["trainingY"]
+        self.testingDataX = preparedData["testingX"]
+        self.testingDataY = preparedData["testingY"]
+        print ("Data loaded...")
+        print (self.trainingDataX.shape)
+        print (self.trainingDataY.shape)
+        print (self.testingDataX.shape)
+        print (self.testingDataY.shape)
+    
+    def numberOfTrainingBatches(self):
+        return int(len(self.trainingDataX)/batch_size)
+
+    def convertArrayToBottleNecks(self,sess,dataArray,category,FLAGS,inceptionV3):
+        bottlenecks = []
+        batchSize = 512
+        i = 0
+        totalNumImages = dataArray.shape[0]
+        print ("Total Number of images:"+str(totalNumImages))
+        while i<totalNumImages:
+            minIndx = i
+            maxIndx = min(dataArray.shape[0],i+batchSize)
+            print (str(i)+"/"+str(dataArray.shape[0]))
+            bottlenecksBatch = DatasetManager.get_random_cached_bottlenecks(sess,i,dataArray[minIndx:maxIndx],category,FLAGS.bottleneck_dir,inceptionV3)
+            bottlenecks.extend(bottlenecksBatch)
+            i = i + batchSize
+        return np.array(bottlenecks)
+
+    def convertToBottleNecks(self,sess,FLAGS,inceptionV3):
+        print ("Converting dataset to bottlenecks...")
+        self.trainingDataX = np.squeeze(self.convertArrayToBottleNecks(sess,self.trainingDataX,"train",FLAGS,inceptionV3))
+        self.testingDataX = np.squeeze(self.convertArrayToBottleNecks(sess,self.testingDataX,"test",FLAGS,inceptionV3))
+        print (self.trainingDataX.shape)
+        print (self.testingDataX.shape)
+        print ("Converted dataset to bottlenecks...")
+
+    def resetTrainBatch(self):
+        self.trainingDataOffset=0
+    
+    def resetTestBatch(self):
+        self.testingDataOffset=0
+
+    def selectRows(self,dataArray,rowOffset,numOfRows):
+        if(rowOffset>=dataArray.shape[0]):
+            return None
+        elif ((rowOffset+numOfRows)>dataArray.shape[0]):
+            return dataArray[rowOffset:dataArray.shape[0],:]
+        return dataArray[rowOffset:rowOffset+numOfRows,:]
+
+    def getNextTrainBatch(self):
+        trainDataX = self.selectRows(self.trainingDataX,self.trainingDataOffset,batch_size)
+        trainDataY = self.selectRows(self.trainingDataY,self.trainingDataOffset,batch_size)
+        self.trainingDataOffset = self.trainingDataOffset+batch_size
+        return trainDataX,trainDataY
+
+    def getNextTestBatch(self):
+        testDataX = self.selectRows(self.testingDataX,self.testingDataOffset,batch_size)
+        testDataY = self.selectRows(self.testingDataY,self.testingDataOffset,batch_size)
+        self.testingDataOffset = self.testingDataOffset+batch_size
+        return testDataX,testDataY
+
+
+    def analyzeDataDistribution(self):
+        # self.loadData("carDataset.pkl")
+        print ("Total Training Instances:"+str(self.trainingDataY.shape[0]))
+        print ("Total Testing Instances:"+str(self.testingDataY.shape[0]))
+        #print self.__convertOneHotVectorToLabels(self.trainingDataY)
+        for classIndex in range(0,n_classes):
+            print ("Distribution For Class:"+str(classIndex))
+            trainDistribution = self.__convertOneHotVectorToLabels(self.trainingDataY)
+            trainDistribution = np.count_nonzero(trainDistribution == classIndex)
+            testDistribution = self.__convertOneHotVectorToLabels(self.testingDataY)
+            testDistribution = np.count_nonzero(testDistribution == classIndex)
+            print ("Instances In Training Data:"+str(trainDistribution))
+            print ("Instances In Testing Data:"+str(testDistribution))
+        print ("Done")
+
+    def __convertOneHotVectorToLabels(self,oneHotVectors):
+        labels = np.argmax(oneHotVectors==1,axis=1)
+        return labels
